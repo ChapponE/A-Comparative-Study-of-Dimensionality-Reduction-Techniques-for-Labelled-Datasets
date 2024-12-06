@@ -13,7 +13,6 @@ def load_fashion_mnist_dataset(n_points=1000):
     fashion_mnist = fetch_openml('Fashion-MNIST', version=1)
     data = fashion_mnist.data
     labels = fashion_mnist.target.astype(int)
-    # Réduire à 1000 points en gardant la répartition des classes
     data, _, labels, _ = train_test_split(data, labels, train_size=n_points, stratify=labels, random_state=42)
     return data.to_numpy(), labels
 
@@ -44,6 +43,7 @@ def generate_swiss_roll_dataset(n_points=1000, noise=0.1, random_state=42):
     data = scaler.fit_transform(data)
     return data, labels
 
+# Double Helix (pour lle)
 def generate_double_helix_dataset(n_points=1000, noise=0.1, random_state=42):
     """
     Génère un jeu de données en forme de Double Helix (double hélice).
