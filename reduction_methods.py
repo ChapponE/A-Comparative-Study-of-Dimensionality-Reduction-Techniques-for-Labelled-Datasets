@@ -11,7 +11,7 @@ def apply_tsne(data, n_components=2):
 def apply_lle(data, n_components=2, n_neighbors=10):
     if hasattr(data, 'to_numpy'):
         data = data.to_numpy()
-    lle = CustomLLE(n_neighbors=n_neighbors, n_components=n_components)
+    #lle = CustomLLE(n_neighbors=n_neighbors, n_components=n_components)
     lle = LocallyLinearEmbedding(n_neighbors=n_neighbors, 
                                         n_components=n_components,
                                         random_state=42)

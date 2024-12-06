@@ -131,50 +131,50 @@ def evaluate_all_methods(X_original, methods, method_names, labels=None):
         labels_discrete = labels
 
     suitability = {
-        'Isomap': {
-            'Residual Pearson': 'red',
-            'Residual Spearman': 'red',
-            'AUC Trustworthiness': 'orange',
-            'AUC Continuity': 'orange',
-            'Qlocal': 'green',
-            'Qglobal': 'green',
-            'Distance Correlation': 'green',
-            'Classification': 'orange',
-            'Time (s)': 'gray' 
-        },
-        'MDS': {
-            'Residual Pearson': 'green',
-            'Residual Spearman': 'green',
-            'AUC Trustworthiness': 'orange',
-            'AUC Continuity': 'orange',
-            'Qlocal': 'orange',
-            'Qglobal': 'green',
-            'Distance Correlation': 'green',
-            'Classification': 'orange',
-            'Time (s)': 'gray'
-        },
-        't-SNE': {
-            'Residual Pearson': 'red',
-            'Residual Spearman': 'red',
-            'AUC Trustworthiness': 'green',
-            'AUC Continuity': 'green',
-            'Qlocal': 'green',
-            'Qglobal': 'orange',
-            'Distance Correlation': 'orange',
-            'Classification': 'green',
-            'Time (s)': 'gray'
-        },
-        'LLE': {
-            'Residual Pearson': 'red',
-            'Residual Spearman': 'red',
-            'AUC Trustworthiness': 'green',
-            'AUC Continuity': 'green',
-            'Qlocal': 'green',
-            'Qglobal': 'orange',
-            'Distance Correlation': 'red',
-            'Classification': 'red',
-            'Time (s)': 'gray'
-        }
+    'Isomap': {
+        'Residual Pearson': 'red',
+        'Residual Spearman': 'red',
+        'AUC Trustworthiness': 'orange',
+        'AUC Continuity': 'orange',
+        'Qlocal': 'green',
+        'Qglobal': 'green',
+        'Distance Correlation': 'green',
+        'Classification': 'orange',
+        'Time (s)': 'gray'
+    },
+    'MDS': {
+        'Residual Pearson': 'green',
+        'Residual Spearman': 'green',
+        'AUC Trustworthiness': 'orange',
+        'AUC Continuity': 'orange',
+        'Qlocal': 'orange',
+        'Qglobal': 'green',
+        'Distance Correlation': 'green',
+        'Classification': 'orange',
+        'Time (s)': 'gray'
+    },
+    't-SNE': {
+        'Residual Pearson': 'red',
+        'Residual Spearman': 'red',
+        'AUC Trustworthiness': 'green',
+        'AUC Continuity': 'green',
+        'Qlocal': 'green',
+        'Qglobal': 'orange',
+        'Distance Correlation': 'orange',
+        'Classification': 'green',
+        'Time (s)': 'gray'
+    },
+    'LLE': {
+        'Residual Pearson': 'red',
+        'Residual Spearman': 'red',
+        'AUC Trustworthiness': 'green',
+        'AUC Continuity': 'green',
+        'Qlocal': 'green',
+        'Qglobal': 'orange',
+        'Distance Correlation': 'red',
+        'Classification': 'red',
+        'Time (s)': 'gray'
+    }
     }
 
     for method, name in zip(methods, method_names):
