@@ -7,6 +7,21 @@ from sklearn.datasets import fetch_olivetti_faces
 from PIL import Image
 from sklearn.datasets import load_wine
 
+import numpy as np
+from sklearn.preprocessing import StandardScaler
+
+def load_datasets(n_points=300):
+    datasets = {
+        'Fashion MNIST': load_fashion_mnist_dataset(n_points=n_points),
+        'Hyper Swiss Roll': generate_swiss_roll_dataset(n_points=n_points),
+        'Double Helix': generate_double_helix_dataset(n_points=n_points),
+        'Partial Sphere': generate_partial_sphere_dataset(n_points=n_points)
+    }
+
+    # Standardisation
+    datasets = {name: data for name, data in datasets.items()}
+    return datasets
+
 # Fashion-MNIST (pour t-sne)
 def load_fashion_mnist_dataset(n_points=1000):
     """Charge les données Fashion-MNIST."""

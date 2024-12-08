@@ -1,12 +1,12 @@
 import numpy as np
-from sklearn.metrics import silhouette_score, pairwise_distances
+from sklearn.metrics import pairwise_distances
 from scipy.stats import spearmanr
 from sklearn.svm import SVC
-from sklearn.model_selection import cross_val_score
+from sklearn.model_selection import KFold, cross_val_score
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import silhouette_score
 import numpy as np
 import pandas as pd
+from sklearn.mixture import GaussianMixture
 from sklearn.metrics import pairwise_distances
 from scipy.stats import spearmanr
 from sklearn.svm import SVC
@@ -14,6 +14,8 @@ from sklearn.model_selection import cross_val_score
 from sklearn.preprocessing import StandardScaler
 import time
 from pyDRMetrics.pyDRMetrics import *
+
+from reduction_methods import apply_isomap, apply_lle, apply_mds, apply_tsne
 
 class DimensionalityReductionEvaluator:
     def __init__(self, X_high, X_low, model, labels=None):
@@ -26,101 +28,113 @@ class DimensionalityReductionEvaluator:
     
     def local_distance_preservation(self, n_neighbors=5):
         """Évalue la préservation des distances locales."""
-        # Calculer les k plus proches voisins dans l'espace original
         nn_orig = np.argsort(self.D_high, axis=1)[:, 1:n_neighbors + 1]
         nn_low = np.argsort(self.D_low, axis=1)[:, 1:n_neighbors + 1]
-        
-        # Calculer le score de préservation
-        preservation = np.mean([len(set(nn_orig[i]) & set(nn_low[i])) / n_neighbors 
-                            for i in range(len(self.X_high))])
+
+        preservation = np.mean([
+            len(set(nn_orig[i]) & set(nn_low[i])) / n_neighbors 
+            for i in range(len(self.X_high))
+        ])
         return round(preservation, 4)
     
-    def classification_score(self, n_folds=5):
-        if self.labels is None:
-            return np.nan
-        scaler = StandardScaler()
-        X_scaled = scaler.fit_transform(self.X_low)
-        clf = SVC(kernel='linear')
-        scores = cross_val_score(clf, X_scaled, self.labels, cv=n_folds)
-        return round(scores.mean(), 4)
+    class EllipticalClassifier:
+        """
+        Classifieur simple basé sur une distribution gaussienne pour la classe positive.
+        """
+        def __init__(self):
+            self.mean_ = None
+            self.cov_inv_ = None
+            self.threshold_ = None
 
-    def local_distance_preservation_score(self, n_neighbors=10):
-        """
-        Évalue la préservation des distances locales en comparant les distances
-        entre points voisins dans les espaces haute et basse dimension.
+        def fit(self, X, y):
+            # X: échantillons, y: labels binaires {0,1} avec 1 = classe positive
+            X_pos = X[y == 1]
+            self.mean_ = np.mean(X_pos, axis=0)
+            cov = np.cov(X_pos, rowvar=False)
+            self.cov_inv_ = np.linalg.pinv(cov)
+
+            dists = self._mahalanobis(X_pos)
+            self.threshold_ = np.max(dists)
+            return self
+
+        def predict(self, X):
+            dists = self._mahalanobis(X)
+            return (dists <= self.threshold_).astype(int)
         
-        Parameters:
-        -----------
-        n_neighbors : int
-            Nombre de voisins à considérer pour l'analyse locale
-            
-        Returns:
-        --------
-        float : Score entre 0 et 1 (1 = meilleure préservation)
+        def _mahalanobis(self, X):
+            diff = X - self.mean_
+            return np.sum(diff @ self.cov_inv_ * diff, axis=1)
+
+
+    def classification_score(self):
         """
-        try:
-            from sklearn.neighbors import NearestNeighbors
-            
-            # 1. Trouver les k plus proches voisins dans l'espace original
-            nbrs_high = NearestNeighbors(n_neighbors=n_neighbors+1).fit(self.X_high)
-            high_distances, high_indices = nbrs_high.kneighbors(self.X_high)
-            
-            # 2. Calculer les distances pour ces mêmes points dans l'espace réduit
-            low_distances = np.zeros_like(high_distances)
-            for i in range(len(self.X_high)):
-                low_distances[i] = np.linalg.norm(
-                    self.X_low[high_indices[i]] - self.X_low[i, np.newaxis], 
-                    axis=1
-                )
-            
-            # 3. Normaliser les distances dans chaque espace
-            high_distances = high_distances / np.max(high_distances)
-            low_distances = low_distances / np.max(low_distances)
-            
-            # 4. Calculer la différence moyenne des distances normalisées
-            # Ignorer le premier voisin qui est le point lui-même
-            distance_diff = np.abs(high_distances[:, 1:] - low_distances[:, 1:])
-            mean_diff = np.mean(distance_diff)
-            
-            # 5. Convertir en score entre 0 et 1 (1 = meilleure préservation)
-            score = 1 - mean_diff
-            
-            return round(np.clip(score, 0, 1), 4)
-        except Exception as e:
-            print(f"Erreur dans local_distance_preservation_score: {str(e)}")
+        Évalue la capacité de discrimination via un classifieur SVC polynomial.
+        - Si <= 30 classes distinctes (discret), on entraîne directement sur les classes existantes.
+        - Si > 30 classes distinctes (continu), on divise en 30 classes à partir de 31 seuils.
+        """
+        labels = self.labels
+        if labels is None:
             return np.nan
+
+        # Conversion des labels en np.array si nécessaire
+        if isinstance(labels, pd.Series):
+            labels = labels.values
+        elif isinstance(labels, list):
+            labels = np.array(labels)
+
+        X_low = self.X_low
+        unique_labels = np.unique(labels)
+        num_unique = len(unique_labels)
+
+        # Entraînement du classifieur polynomial SVC
+        clf = RBFSVCClassifier(C=1.0, gamma='scale')
+        clf.fit(X_low, labels)
+
+        # Prédiction et calcul de la précision
+        pred_class = clf.predict(X_low)
+
+        if num_unique <= 30:
+            # Discret
+            # On reconstruit la mapping inverse
+            label_mapping_inv = {v: k for k, v in clf.label_mapping.items()}
+            true_class = np.array([clf.label_mapping[lab] for lab in labels])
+            acc = np.mean(pred_class == true_class)
+        else:
+            # Continu
+            # On refait la même discrétisation pour obtenir la "vraie" classe
+            lowest = np.min(labels)
+            highest = np.max(labels)
+            thresholds = np.linspace(lowest, highest, 31)
+            true_class = np.digitize(labels, thresholds[1:-1])
+            acc = np.mean(pred_class == true_class)
+
+        return round(acc, 4)
         
     def distance_correlation(self):
         """
-        Calcule la corrélation entre les distances des espaces haute et basse dimension.
-        Utilise la corrélation de Spearman pour capturer les relations monotones non-linéaires.
-        
-        Returns:
-        --------
-        float : Score de corrélation entre 0 et 1 (1 = meilleure préservation)
+        Calcule la corrélation de Spearman entre les distances haute et basse dimension.
         """
         try:
-            # Extraction des triangles supérieurs des matrices de distance
-            # (évite la redondance car les matrices sont symétriques)
             triu_indices = np.triu_indices(self.D_high.shape[0], k=1)
             d_high_flat = self.D_high[triu_indices]
             d_low_flat = self.D_low[triu_indices]
-            
-            # Normalisation des distances
+
             d_high_flat = d_high_flat / np.max(d_high_flat)
             d_low_flat = d_low_flat / np.max(d_low_flat)
-            
-            # Calcul de la corrélation de Spearman
+
             correlation, _ = spearmanr(d_high_flat, d_low_flat)
-            
-            # Conversion en score entre 0 et 1
             return round(np.clip(correlation, 0, 1), 4)
         except Exception as e:
             print(f"Erreur dans distance_correlation: {str(e)}")
             return np.nan
     
-def evaluate_all_methods(X_original, methods, method_names, labels=None):
+def evaluate_all_methods(X_original, method_names, labels=None, n_neighbors=None):
+    """
+    Évalue plusieurs méthodes de réduction de dimension et calcule divers métriques.
+    """
+
     results = []
+    
     if labels is not None and np.issubdtype(labels.dtype, np.number):
         is_continuous = len(np.unique(labels)) > 20
         if is_continuous:
@@ -131,67 +145,87 @@ def evaluate_all_methods(X_original, methods, method_names, labels=None):
         labels_discrete = labels
 
     suitability = {
-    'Isomap': {
-        'Residual Pearson': 'red',
-        'Residual Spearman': 'red',
-        'AUC Trustworthiness': 'orange',
-        'AUC Continuity': 'orange',
-        'Qlocal': 'green',
-        'Qglobal': 'green',
-        'Distance Correlation': 'green',
-        'Classification': 'orange',
-        'Time (s)': 'gray'
-    },
-    'MDS': {
-        'Residual Pearson': 'green',
-        'Residual Spearman': 'green',
-        'AUC Trustworthiness': 'orange',
-        'AUC Continuity': 'orange',
-        'Qlocal': 'orange',
-        'Qglobal': 'green',
-        'Distance Correlation': 'green',
-        'Classification': 'orange',
-        'Time (s)': 'gray'
-    },
-    't-SNE': {
-        'Residual Pearson': 'red',
-        'Residual Spearman': 'red',
-        'AUC Trustworthiness': 'green',
-        'AUC Continuity': 'green',
-        'Qlocal': 'green',
-        'Qglobal': 'orange',
-        'Distance Correlation': 'orange',
-        'Classification': 'green',
-        'Time (s)': 'gray'
-    },
-    'LLE': {
-        'Residual Pearson': 'red',
-        'Residual Spearman': 'red',
-        'AUC Trustworthiness': 'green',
-        'AUC Continuity': 'green',
-        'Qlocal': 'green',
-        'Qglobal': 'orange',
-        'Distance Correlation': 'red',
-        'Classification': 'red',
-        'Time (s)': 'gray'
-    }
+        'Isomap': {
+            'Residual Pearson': 'red',
+            'Residual Spearman': 'red',
+            'AUC Trustworthiness': 'orange',
+            'AUC Continuity': 'orange',
+            'Qlocal': 'green',
+            'Qglobal': 'green',
+            'Distance Correlation': 'green',
+            'Classification': 'orange',
+            'Time (s)': 'gray'
+        },
+        'MDS': {
+            'Residual Pearson': 'green',
+            'Residual Spearman': 'green',
+            'AUC Trustworthiness': 'orange',
+            'AUC Continuity': 'orange',
+            'Qlocal': 'orange',
+            'Qglobal': 'green',
+            'Distance Correlation': 'green',
+            'Classification': 'red',
+            'Time (s)': 'gray'
+        },
+        't-SNE': {
+            'Residual Pearson': 'red',
+            'Residual Spearman': 'red',
+            'AUC Trustworthiness': 'green',
+            'AUC Continuity': 'green',
+            'Qlocal': 'green',
+            'Qglobal': 'orange',
+            'Distance Correlation': 'orange',
+            'Classification': 'green',
+            'Time (s)': 'gray'
+        },
+        'LLE': {
+            'Residual Pearson': 'red',
+            'Residual Spearman': 'red',
+            'AUC Trustworthiness': 'green',
+            'AUC Continuity': 'green',
+            'Qlocal': 'green',
+            'Qglobal': 'orange',
+            'Distance Correlation': 'red',
+            'Classification': 'green',
+            'Time (s)': 'gray'
+        }
     }
 
-    for method, name in zip(methods, method_names):
-        #try:
+    # Gérer n_neighbors
+    # Si n_neighbors est un entier, on l'applique à LLE et Isomap.
+    # Si c'est un dict, on l'utilise tel quel.
+    def get_n_neighbors_for_method(method):
+        if isinstance(n_neighbors, dict):
+            return n_neighbors.get(method, 10)  # Valeur par défaut si non spécifiée
+        else:
+            # n_neighbors est un entier, on l'utilise pour LLE et Isomap
+            # t-SNE et MDS n'en ont pas besoin
+            return n_neighbors if n_neighbors is not None else 10
+    
+    methods = {}
+    for name in method_names:
+        if name == 't-SNE':
+            methods[name] = lambda x: apply_tsne(x, n_components=2)
+        elif name == 'LLE':
+            nneigh = get_n_neighbors_for_method('LLE')
+            methods[name] = lambda x, nneigh=nneigh: apply_lle(x, n_components=2, n_neighbors=nneigh)
+        elif name == 'MDS':
+            methods[name] = lambda x: apply_mds(x, n_components=2)
+        elif name == 'Isomap':
+            nneigh = get_n_neighbors_for_method('Isomap')
+            methods[name] = lambda x, nneigh=nneigh: apply_isomap(x, n_components=2, n_neighbors=nneigh)
+        else:
+            raise ValueError(f"Méthode '{name}' n'est pas supportée.")
+
+    for name in method_names:
+        method = methods[name]
         start_time = time.time()
         X_reduced = method(X_original)
         execution_time = time.time() - start_time
-            
-        evaluator = DimensionalityReductionEvaluator(X_original, X_reduced, method, labels_discrete)
 
-        ##### Réduire les dimensions
-        X_reduced = method(X_original)
-        
-        # Calculer les métriques
+        evaluator = DimensionalityReductionEvaluator(X_original, X_reduced, method, labels_discrete)
         dr_metrics = DRMetrics(X_original, X_reduced)
-        
-        # Stocker les résultats
+
         metrics = {
             'Method': name,
             'Residual Pearson': dr_metrics.Vr,
@@ -202,22 +236,72 @@ def evaluate_all_methods(X_original, methods, method_names, labels=None):
             'Qglobal': dr_metrics.Qglobal,
             'Distance Correlation': evaluator.distance_correlation(),
             'Classification': evaluator.classification_score(),
-            'Time (s)': execution_time,
+            'Time (s)': round(execution_time, 4),
         }
         results.append(metrics)
-        #####
 
     df_results = pd.DataFrame(results).set_index('Method')
 
-    # Apply color coding based on suitability
     def color_code(val, method, metric):
         if method in suitability and metric in suitability[method]:
             color = suitability[method][metric]
             return f'background-color: {color}'
         return ''
 
-    # Apply color coding first, then format the DataFrame
     styled_df = df_results.style.apply(
         lambda x: [color_code(v, x.name, col) for col, v in x.items()], axis=1
     ).format(precision=4)
     return styled_df
+
+class RBFSVCClassifier:
+    """
+    Classifieur basé sur un SVC avec noyau RBF.
+    - Pour les labels discrets (<=30 classes distinctes), 
+      on utilise toutes les classes telles quelles.
+    - Pour les labels continus (>30 classes distinctes),
+      on discrétise en 30 classes et on entraîne sur ces classes discrétisées.
+    - Utilise des hyperparamètres prédéfinis pour minimiser le surapprentissage.
+    """
+    def __init__(self, C=1.0, gamma=0.1):
+        """
+        Parameters:
+        - C: Régularisation. Valeur plus faible pour plus de régularisation.
+        - gamma: Influence d'un seul point d'entraînement. Valeur plus faible pour une généralisation accrue.
+        """
+        self.is_discrete = None
+        self.label_mapping = None
+        self.svc = None
+        self.scaler = None
+        self.C = C
+        self.gamma = gamma
+
+    def fit(self, X, y):
+        self.scaler = StandardScaler()
+        X_scaled = self.scaler.fit_transform(X)
+
+        unique_labels = np.unique(y)
+        num_unique = len(unique_labels)
+
+        if num_unique <= 30:
+            # Cas discret
+            self.is_discrete = True
+            # Mapping des labels vers des classes entières
+            self.label_mapping = {lab: i for i, lab in enumerate(unique_labels)}
+            class_labels = np.array([self.label_mapping[lab] for lab in y])
+        else:
+            # Cas continu
+            self.is_discrete = False
+            lowest = np.min(y)
+            highest = np.max(y)
+            # 31 seuils pour former 30 classes
+            thresholds = np.linspace(lowest, highest, 31)
+            class_labels = np.digitize(y, thresholds[1:-1])  # classes 0 à 29
+
+        # Entraînement du SVC RBF
+        self.svc = SVC(kernel='rbf', C=self.C, gamma=self.gamma, probability=False)
+        self.svc.fit(X_scaled, class_labels)
+
+    def predict(self, X):
+        X_scaled = self.scaler.transform(X)
+        pred_class = self.svc.predict(X_scaled)
+        return pred_class

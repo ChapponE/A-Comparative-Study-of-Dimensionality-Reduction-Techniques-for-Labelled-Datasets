@@ -17,8 +17,8 @@ def apply_lle(data, n_components=2, n_neighbors=10):
                                         random_state=42)
     return lle.fit_transform(data)
 
-def apply_isomap(data, n_components=2):
-    isomap = CustomIsomap(n_neighbors=10, n_components=n_components)
+def apply_isomap(data, n_components=2, n_neighbors=10):
+    isomap = CustomIsomap(n_neighbors=n_neighbors, n_components=n_components)
     return isomap.fit_transform(data)
 
 def apply_mds(data, n_components=2):
@@ -315,3 +315,43 @@ class CustomIsomap:
         error = np.mean(np.abs(geodesic_distances - reduced_distances))
         return error
 
+def find_optimal_n_neighbors(datasets, n_neighbors_range):
+    results = {}
+    for name, (X, _) in datasets.items():
+        print(f"Processing dataset: {name}")
+        
+        lle_errors = []
+        isomap_errors = []
+        
+        for n_neighbors in n_neighbors_range:
+            # LLE
+            lle = CustomLLE(n_neighbors=n_neighbors, n_components=2)
+            X_reduced_lle = lle.fit_transform(X)
+            lle_error = lle.local_distance_correlation(X, X_reduced_lle)
+            lle_errors.append(lle_error)
+            
+            # Isomap
+            isomap = CustomIsomap(n_neighbors=n_neighbors, n_components=2)
+            X_reduced_isomap = isomap.fit_transform(X)
+            isomap_error = isomap.geodesic_error(X, X_reduced_isomap)
+            isomap_errors.append(isomap_error)
+        
+        # Trouver le n_neighbors optimal
+        optimal_lle_n_neighbors = n_neighbors_range[np.argmax(lle_errors)]
+        optimal_isomap_n_neighbors = n_neighbors_range[np.argmin(isomap_errors)]
+        
+        results[name] = {
+            'LLE': {
+                'Optimal n_neighbors': optimal_lle_n_neighbors,
+                'Distance Correlation': lle_errors
+            },
+            'Isomap': {
+                'Optimal n_neighbors': optimal_isomap_n_neighbors,
+                'Geodesic Error': isomap_errors
+            }
+        }
+        
+        print(f"Optimal n_neighbors for LLE on {name}: {optimal_lle_n_neighbors}")
+        print(f"Optimal n_neighbors for Isomap on {name}: {optimal_isomap_n_neighbors}")
+    
+    return results
