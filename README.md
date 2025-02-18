@@ -19,7 +19,8 @@ Systematic approach to select optimal number of neighbors for LLE and ISOMAP alg
 Implementation of experiments comparing t-SNE, LLE, ISOMAP, and MDS methods, generating figures and tables for the paper.
 
 ## Authors
-- Edouard Chappon, Elyes Khalfallah
+- Edouard Chappon 
+- Elyes Khalfallah
 
 ## Course Information
 - **Course**: Manifold Learning
