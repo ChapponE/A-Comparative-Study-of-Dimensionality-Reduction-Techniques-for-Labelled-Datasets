@@ -5,9 +5,6 @@ This repository contains the experimental work conducted for a comparative study
 ## Article
 Our findings and analysis are detailed in the following paper:
 
-![Article Page 1](path/to/page1.png)
-![Article Page 2](path/to/page2.png)
-
 [Full PDF](A-Comparative-Study-of-Dimensionality-Reduction-Techniques-for-Labelled-Datasets.pdf)
 
 ## Notebooks
