@@ -1,0 +1,6 @@
+# Python
+__pycache__/
+
+# images
+images/
+images/*

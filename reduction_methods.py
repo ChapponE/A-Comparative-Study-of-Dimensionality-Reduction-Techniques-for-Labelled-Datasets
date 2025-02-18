@@ -355,3 +355,34 @@ def find_optimal_n_neighbors(datasets, n_neighbors_range):
         print(f"Optimal n_neighbors for Isomap on {name}: {optimal_isomap_n_neighbors}")
     
     return results
+
+
+
+
+
+
+
+
+
+
+#############################
+from sklearn.manifold import TSNE, LocallyLinearEmbedding, Isomap, MDS
+
+def apply_dimensionality_reduction(dataset, n_neighbors_dict={"LLE": 10, "Isomap": 10}):
+    # t-SNE
+    tsne_model = TSNE(n_components=2, random_state=42)
+    zigzag_tsne = tsne_model.fit_transform(dataset)
+
+    # LLE 
+    lle_model = LocallyLinearEmbedding(n_components=2, n_neighbors=n_neighbors_dict["LLE"], random_state=42)
+    zigzag_lle = lle_model.fit_transform(dataset)
+
+    # Isomap
+    isomap_model = Isomap(n_components=2, n_neighbors=n_neighbors_dict["Isomap"])
+    zigzag_isomap = isomap_model.fit_transform(dataset)
+
+    # MDS
+    mds_model = MDS(n_components=2, random_state=42)
+    zigzag_mds = mds_model.fit_transform(dataset)
+
+    return zigzag_tsne, zigzag_lle, zigzag_isomap, zigzag_mds
